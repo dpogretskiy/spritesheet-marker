@@ -1,0 +1,19 @@
+[package]
+name = "tilesheetgen"
+version = "0.1.0"
+authors = ["Dmitriy Pogretskiy <dpogretskiy@gmail.com>"]
+build = "build.rs"
+
+[dependencies]
+serde_json = "*"
+serde = "*"
+serde_derive = "*"
+find_folder = "*"
+native-windows-gui = "0.2.0"
+nalgebra = "*"
+
+ggez = "*"
+image = "*"
+
+[features]
+cargo-resource-root = []
