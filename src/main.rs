@@ -6,7 +6,11 @@ extern crate serde;
 extern crate serde_json;
 
 #[macro_use]
+#[cfg(windows)]
 extern crate native_windows_gui as nwg;
+
+#[cfg(unix)]
+extern crate gtk;
 
 #[macro_use]
 extern crate serde_derive;
@@ -14,18 +18,21 @@ extern crate serde_derive;
 mod sprite;
 mod file_navigator;
 mod marker;
+mod ui;
 
 use std::path::PathBuf;
 use std::time::Duration;
 use std::rc::Rc;
 
-use file_navigator::FileNavigator;
+use file_navigator::navigator::FileNavigator;
 use sprite::{geom, Loader};
 use marker::SpriteData;
+use ui::GroundUi;
 
 use ggez::{event, graphics, timer, Context, GameResult};
 use ggez::graphics::*;
 use ggez::conf::Conf;
+use ggez::event::MouseState;
 
 fn check_ext(p: &PathBuf, ext: &str) -> bool {
     let sr = format!("{}", p.display());
@@ -62,7 +69,7 @@ fn lets_play(meta: &PathBuf, image: &PathBuf) {
         window_height: 1000,
         window_width: 1600,
         vsync: true,
-        resizable: true,
+        resizable: false,
         window_icon: String::from(""),
     };
     let ctx = &mut Context::load_from_conf("game", "ez", c).unwrap();
@@ -70,30 +77,72 @@ fn lets_play(meta: &PathBuf, image: &PathBuf) {
     event::run(ctx, &mut state).unwrap();
 }
 
+pub struct Assets {
+    font: Font,
+}
+
+impl Assets {
+    pub fn load(ctx: &mut Context) -> GameResult<Assets> {
+        let font = Font::new(ctx, "/DejaVuSerif.ttf", 18)?;
+        Ok(Assets { font })
+    }
+}
 
 pub struct Game {
+    pub assets: Assets,
+    pub ui: GroundUi,
     pub sprite: sprite::SpriteSheet,
     pub marked: Vec<SpriteData>,
     pub selection: Rect,
     pub scroll: f32,
     pub render: Vec<(Rc<Image>, DrawParam)>,
+    pub hovered: Option<Rect>
 }
-
 
 impl Game {
     pub fn new(ctx: &mut Context, meta: &PathBuf, image: &PathBuf) -> GameResult<Game> {
         let sprite = Loader::load_sprite_sheet(ctx, meta, image)?;
+        let assets = Assets::load(ctx)?;
+        let ui = GroundUi::new(ctx, &assets)?;
 
         Ok(Game {
+            ui,
+            assets,
             sprite,
             marked: vec![],
             selection: Rect::zero(),
             scroll: 0.0,
             render: vec![],
+            hovered: None,
         })
     }
-}
 
+    pub fn hover(&mut self, x: i32, y: i32) {
+        let point = Point::new(x as f32, y as f32);
+
+        let dp = self.render.iter().find(|r| {
+            let mut rect = r.1.dest.clone();
+            rect.w = rect.w * 1600.0;
+            rect.h = rect.h * 1000.0;
+            ui::point_within(&point, &rect)
+        });
+
+        match dp {
+            Some(dp) => self.hovered = { 
+                
+                println!("Hovering smth: {:?}", dp);
+                
+                Some(Rect {
+                    x: dp.1.dest.x,
+                    y: dp.1.dest.y,
+                    w: dp.1.src.w,
+                    h: dp.1.src.h,
+                })
+            },
+            None => self.hovered = None,
+        };
+    }
+}
 
 impl event::EventHandler for Game {
     fn update(&mut self, _ctx: &mut Context, _dt: Duration) -> GameResult<()> {
@@ -104,23 +153,17 @@ impl event::EventHandler for Game {
         for (ix, frame) in sprite.info.frames.iter().enumerate() {
             let x = ix % 3;
             let y = ix / 3;
-
             let src = frames[ix].segment;
-
             let dest = Point {
                 x: 200.0 + x as f32 * 400.0,
                 y: (200.0 + y as f32 * 400.0 + self.scroll),
             };
-
             let geom::Size {
                 w: orig_w,
                 h: orig_h,
             } = frame.sourceSize;
-
             let max = orig_w.max(orig_h);
-
             let scale = Point::new(380.0 / max, 380.0 / max);
-
             let param = DrawParam {
                 src,
                 dest,
@@ -128,7 +171,6 @@ impl event::EventHandler for Game {
                 offset: Point::zero(),
                 ..Default::default()
             };
-
             self.render.push((self.sprite.image.clone(), param));
         }
         Ok(())
@@ -141,18 +183,34 @@ impl event::EventHandler for Game {
             graphics::draw_ex(ctx, &**img, params.clone())?;
         }
 
+        if let Some(hover) = self.hovered {
+            graphics::set_color(ctx, graphics::Color::new(0.0, 1.0, 0.0, 0.5))?;
+            // graphics::rect()
+        }
+    
+        self.ui.draw(ctx, &Point::new(1400.0, 200.0));
+
         graphics::present(ctx);
         timer::sleep_until_next_frame(ctx, 120);
         Ok(())
     }
 
+    fn mouse_motion_event(&mut self, state: MouseState, x: i32, y: i32, _xrel: i32, _yrel: i32) {
+        if !state.left() && !state.right() {
+            self.hover(x, y);
+        }
+    }
+
     fn mouse_button_down_event(&mut self, button: event::MouseButton, x: i32, y: i32) {
         if button == event::MouseButton::Left {
+
             println!("Leftie!: {} {}", x, y);
         }
     }
 
-    fn mouse_button_up_event(&mut self, _button: event::MouseButton, x: i32, y: i32) {}
+    fn mouse_button_up_event(&mut self, _button: event::MouseButton, x: i32, y: i32) {
+
+    }
 
     fn mouse_wheel_event(&mut self, _x: i32, y: i32) {
         //1 up, -1 down
