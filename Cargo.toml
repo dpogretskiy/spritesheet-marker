@@ -11,7 +11,7 @@ serde_derive = "*"
 find_folder = "*"
 nalgebra = "*"
 
-ggez = "*"
+ggez = { version = "*", features = ["cargo-resource-root"] }
 image = "*"
 
 [target.'cfg(windows)'.dependencies]
@@ -19,7 +19,3 @@ native-windows-gui = "0.2.0"
 
 [target.'cfg(unix)'.dependencies]
 gtk = {version = "0.2.0", features = ["v3_16"] }
-
-[features]
-cargo-resource-root = []
-

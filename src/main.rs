@@ -28,6 +28,7 @@ use file_navigator::navigator::FileNavigator;
 use sprite::{geom, Loader};
 use marker::SpriteData;
 use ui::GroundUi;
+use ui::UiState;
 
 use ggez::{event, graphics, timer, Context, GameResult};
 use ggez::graphics::*;
@@ -62,7 +63,6 @@ pub fn main() {
     gt.join().unwrap();
 }
 
-
 fn lets_play(meta: &PathBuf, image: &PathBuf) {
     let c = Conf {
         window_title: String::from("Geopardy v0.1"),
@@ -95,15 +95,15 @@ pub struct Game {
     pub marked: Vec<SpriteData>,
     pub selection: Rect,
     pub scroll: f32,
-    pub render: Vec<(Rc<Image>, DrawParam)>,
-    pub hovered: Option<Rect>
+    pub render: Vec<(Rc<Image>, DrawParam, Rect)>,
+    pub hovered: Option<Rect>,
 }
 
 impl Game {
     pub fn new(ctx: &mut Context, meta: &PathBuf, image: &PathBuf) -> GameResult<Game> {
         let sprite = Loader::load_sprite_sheet(ctx, meta, image)?;
         let assets = Assets::load(ctx)?;
-        let ui = GroundUi::new(ctx, &assets)?;
+        let ui = GroundUi::new(ctx, &assets, Point::new(1400.0, 200.0))?;
 
         Ok(Game {
             ui,
@@ -120,26 +120,18 @@ impl Game {
     pub fn hover(&mut self, x: i32, y: i32) {
         let point = Point::new(x as f32, y as f32);
 
-        let dp = self.render.iter().find(|r| {
-            let mut rect = r.1.dest.clone();
-            rect.w = rect.w * 1600.0;
-            rect.h = rect.h * 1000.0;
-            ui::point_within(&point, &rect)
-        });
+        let dp = self.render.iter().find(|r| { ui::point_within(&point, &r.2)});
 
         match dp {
-            Some(dp) => self.hovered = { 
-                
-                println!("Hovering smth: {:?}", dp);
-                
-                Some(Rect {
-                    x: dp.1.dest.x,
-                    y: dp.1.dest.y,
-                    w: dp.1.src.w,
-                    h: dp.1.src.h,
-                })
+            Some(dp) => {
+                self.hovered = {
+                    Some(dp.2.clone())
+                }
+            }
+            None => {
+                self.ui.hover(&point);
+                self.hovered = None
             },
-            None => self.hovered = None,
         };
     }
 }
@@ -171,7 +163,14 @@ impl event::EventHandler for Game {
                 offset: Point::zero(),
                 ..Default::default()
             };
-            self.render.push((self.sprite.image.clone(), param));
+            let on_screen_coordinates = Rect {
+                x: dest.x,
+                y: dest.y,
+                w: orig_w * 380.0 / max,
+                h: orig_h * 380.0 / max,
+            };
+            self.render
+                .push((self.sprite.image.clone(), param, on_screen_coordinates));
         }
         Ok(())
     }
@@ -179,16 +178,15 @@ impl event::EventHandler for Game {
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         graphics::clear(ctx);
 
-        for &(ref img, params) in self.render.iter() {
+        for &(ref img, params, _) in self.render.iter() {
             graphics::draw_ex(ctx, &**img, params.clone())?;
         }
 
         if let Some(hover) = self.hovered {
-            graphics::set_color(ctx, graphics::Color::new(0.0, 1.0, 0.0, 0.5))?;
-            // graphics::rect()
+            ui::draw_rect_with_outline(ctx, Color::new(0.0, 0.1, 1.0, 1.0), &hover)?;
         }
-    
-        self.ui.draw(ctx, &Point::new(1400.0, 200.0));
+
+        self.ui.draw(ctx);
 
         graphics::present(ctx);
         timer::sleep_until_next_frame(ctx, 120);
@@ -203,14 +201,11 @@ impl event::EventHandler for Game {
 
     fn mouse_button_down_event(&mut self, button: event::MouseButton, x: i32, y: i32) {
         if button == event::MouseButton::Left {
-
             println!("Leftie!: {} {}", x, y);
         }
     }
 
-    fn mouse_button_up_event(&mut self, _button: event::MouseButton, x: i32, y: i32) {
-
-    }
+    fn mouse_button_up_event(&mut self, _button: event::MouseButton, x: i32, y: i32) {}
 
     fn mouse_wheel_event(&mut self, _x: i32, y: i32) {
         //1 up, -1 down
@@ -218,5 +213,6 @@ impl event::EventHandler for Game {
         if new_scroll < 0.0 {
             self.scroll = new_scroll
         };
+        self.hover(0, 0);
     }
 }
