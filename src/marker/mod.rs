@@ -3,21 +3,21 @@ use super::sprite::geom;
 use super::sprite::*;
 use super::sprite::texture_packer::*;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Debug)]
 pub enum Vertical {
     Top,
     Bottom,
     Center,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Debug)]
 pub enum Horizontal {
     Left,
     Right,
     Center,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Debug)]
 pub enum SpriteType {
     Object,
     Platform { horizontal: Vec<Horizontal> },
@@ -27,11 +27,26 @@ pub enum SpriteType {
     },
 }
 
+impl SpriteType {
+    pub fn empty_ground() -> SpriteType {
+        SpriteType::Ground {
+            vertical: vec![],
+            horizontal: vec![],
+        }
+    }
+
+    pub fn empty_platform() -> SpriteType {
+        SpriteType::Platform {
+            horizontal: vec![]
+        }
+    }
+}
+
 // impl Serialize for SpriteType {}
 
 // impl Deserialize for SpriteType {}
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SpriteData {
     pub on_screen_frame: geom::Rect,
     pub frame: geom::Rect,

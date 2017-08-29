@@ -5,7 +5,6 @@ extern crate nalgebra;
 extern crate serde;
 extern crate serde_json;
 
-#[macro_use]
 #[cfg(windows)]
 extern crate native_windows_gui as nwg;
 
@@ -39,14 +38,6 @@ fn check_ext(p: &PathBuf, ext: &str) -> bool {
     sr.ends_with(ext)
 }
 
-// fn to_lower_case(p: &PathBuf) -> PathBuf {
-//     let sr = format!("{}", p.display());
-//     let sr = sr.chars()
-//         .flat_map(|c| c.to_lowercase())
-//         .collect::<String>();
-//     PathBuf::from(sr)
-// }
-
 fn select_file() -> (PathBuf, PathBuf) {
     let selected = FileNavigator::select_files(&["png", "json"]);
     println!("{:?}", selected);
@@ -56,22 +47,7 @@ fn select_file() -> (PathBuf, PathBuf) {
     (meta.clone(), image.clone())
 }
 
-use marker::*;
 pub fn main() {
-    let marked = SpriteData {
-        on_screen_frame: geom::Rect::new(1.0, 2.0, 3.0, 4.0),
-        frame: geom::Rect::new(4.0, 3.0, 2.0, 1.0),
-        markers: SpriteType::Ground {
-            horizontal: vec![Horizontal::Left, Horizontal::Right, Horizontal::Center],
-            vertical: vec![Vertical::Top, Vertical::Bottom, Vertical::Center],
-        },
-        name: String::from("raspbery"),
-        index: 4,
-    };
-    let serialized = serde_json::to_string(&marked).unwrap();
-    println!("marked: {}", serialized);
-
-
     let (meta, image) = select_file();
     let gt = std::thread::spawn(move || { lets_play(&meta, &image); });
     gt.join().unwrap();
@@ -103,7 +79,7 @@ impl Assets {
 }
 
 pub struct Game {
-    pub assets: Assets,
+    pub assets: Rc<Assets>,
     pub ui: AssetTypeUi,
     pub marked: Vec<SpriteData>,
     pub sprites_render: Vec<(DrawParam, usize, Rect)>,
@@ -111,13 +87,14 @@ pub struct Game {
     pub image: Rc<Image>,
     pub selected: Option<(Rect, usize)>,
     pub hovered: Option<(Rect, usize)>,
+    pub click: Option<Point>,
 }
 
 impl Game {
     pub fn new(ctx: &mut Context, meta: &PathBuf, image: &PathBuf) -> GameResult<Game> {
         let sprite = Loader::load_sprite_sheet(ctx, meta, image)?;
-        let assets = Assets::load(ctx)?;
-        let ui = AssetTypeUi::new(ctx, &assets, Point::new(1400.0, 200.0), None)?;
+        let assets = Rc::new(Assets::load(ctx)?);
+        let ui = AssetTypeUi::new(ctx, assets.clone(), Point::new(1400.0, 200.0), None)?;
 
         let marked = SpriteData::create(&sprite.info);
         let image = sprite.image.clone();
@@ -131,6 +108,7 @@ impl Game {
             image,
             selected: None,
             hovered: None,
+            click: None,
         })
     }
 
@@ -142,7 +120,7 @@ impl Game {
             .find(|tuple| ui::point_within(&point, &tuple.2));
 
         match dp {
-            Some(&(dp, ix, rect)) =>  { 
+            Some(&(_, ix, rect)) =>  { 
                 let mut r = rect.clone();
                 r.y -= self.scroll;
                 self.hovered = Some((r, ix)) 
@@ -153,10 +131,60 @@ impl Game {
             }
         };
     }
+
+    pub fn unselect(&mut self) {
+        if let Some((_, ix)) = self.selected {
+            self.marked[ix] = self.ui.full_state().unwrap();
+            self.selected = None;
+        } else { panic!("Nothing is selected!") };
+        println!("State: {:?}", self.marked);
+    }
+
+    pub fn select(&mut self, ix: usize, ctx: &mut Context) {
+        if let None = self.selected {
+            let ui = AssetTypeUi::new(ctx, self.assets.clone(), Point::new(1400.0, 200.0), Some(&self.marked[ix])).unwrap();
+            self.selected = self.hovered.clone();
+            self.ui = ui;
+        } else { panic!("Selected already!") };
+    }
+
+    pub fn save(&mut self, ctx: &mut Context) {
+
+    }
 }
 
 impl event::EventHandler for Game {
-    fn update(&mut self, _ctx: &mut Context, _dt: Duration) -> GameResult<()> {
+    fn update(&mut self, ctx: &mut Context, _dt: Duration) -> GameResult<()> {
+
+        let mut save_now = false;
+
+        if let Some(ref point) = self.click.map(|c| {c.clone()}) {
+            println!("Clicky! {:?}", point);
+            println!("Selected: {:?}", self.selected);
+            println!("Hovered: {:?}", self.hovered);
+            if let Some(sel) = self.selected {
+                if ui::point_within(&point, &rect_with_scroll(&sel.0, self.scroll)) {
+                    self.unselect();
+                } else if let Some(hovered) = self.hovered {
+                    self.unselect();
+                    self.select(hovered.1, ctx);
+                } else {
+                    let opt = self.ui.interact(ctx, point).err();
+                    if let Some(ggez::GameError::UnknownError(_)) = opt {
+                        save_now = true;
+                    };
+                };
+            } else if let Some(hovered) = self.hovered {
+                println!("Select!: {}", hovered.1);
+                self.select(hovered.1, ctx);
+            };
+        };
+        self.click = None;
+
+        if save_now {
+            self.save(ctx)
+        }
+
         self.sprites_render.clear();
         for frame in self.marked.iter() {
             let ix = frame.index;
@@ -197,7 +225,7 @@ impl event::EventHandler for Game {
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         graphics::clear(ctx);
 
-        for &(params, ix, rect) in self.sprites_render.iter() {
+        for &(params, _, _) in self.sprites_render.iter() {
             graphics::draw_ex(ctx, &*self.image, params.clone())?;
         }
 
@@ -211,7 +239,9 @@ impl event::EventHandler for Game {
                 &rect_with_scroll(&selection.0, self.scroll))?;
         }
 
-        self.ui.draw(ctx);
+        if self.selected.is_some() {
+            self.ui.draw(ctx);
+        };
 
         graphics::present(ctx);
         timer::sleep_until_next_frame(ctx, 120);
@@ -226,19 +256,9 @@ impl event::EventHandler for Game {
 
     fn mouse_button_down_event(&mut self, button: event::MouseButton, x: i32, y: i32) {
         if button == event::MouseButton::Left {
-            println!("Leftie!: {} {}", x, y);
-
-            if let Some(sel) = self.selected {
-                if ui::point_within(&Point::new(x as f32, y as f32), &rect_with_scroll(&sel.0, self.scroll)) {
-                    self.selected = None;
-                }
-            } else if self.hovered.is_some() {
-                self.selected = self.hovered.clone()
-            };
+            self.click = Some(Point::new(x as f32, y as f32));
         }
     }
-
-    fn mouse_button_up_event(&mut self, _button: event::MouseButton, x: i32, y: i32) {}
 
     fn mouse_wheel_event(&mut self, _x: i32, y: i32) {
         //1 up, -1 down
