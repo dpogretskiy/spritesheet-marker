@@ -3,31 +3,12 @@ use serde_json;
 use std::string::String;
 use std::result::Result;
 use std::fs::File;
+use super::geom::*;
 
 #[derive(Deserialize, Debug)]
 pub struct SpriteSheet {
     pub frames: Vec<Sprite>,
     pub meta: SpriteSheetMeta
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Rect {
-    pub x: f32,
-    pub y: f32,
-    pub w: f32,
-    pub h: f32
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Point {
-    pub x: f32,
-    pub y: f32
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Size {
-    pub w: f32,
-    pub h: f32
 }
 
 #[derive(Deserialize, Debug)]

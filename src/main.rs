@@ -27,8 +27,7 @@ use std::rc::Rc;
 use file_navigator::navigator::FileNavigator;
 use sprite::{geom, Loader};
 use marker::SpriteData;
-use ui::GroundUi;
-use ui::UiState;
+use ui::*;
 
 use ggez::{event, graphics, timer, Context, GameResult};
 use ggez::graphics::*;
@@ -57,7 +56,22 @@ fn select_file() -> (PathBuf, PathBuf) {
     (meta.clone(), image.clone())
 }
 
+use marker::*;
 pub fn main() {
+    let marked = SpriteData {
+        on_screen_frame: geom::Rect::new(1.0, 2.0, 3.0, 4.0),
+        frame: geom::Rect::new(4.0, 3.0, 2.0, 1.0),
+        markers: SpriteType::Ground {
+            horizontal: vec![Horizontal::Left, Horizontal::Right, Horizontal::Center],
+            vertical: vec![Vertical::Top, Vertical::Bottom, Vertical::Center],
+        },
+        name: String::from("raspbery"),
+        index: 4,
+    };
+    let serialized = serde_json::to_string(&marked).unwrap();
+    println!("marked: {}", serialized);
+
+
     let (meta, image) = select_file();
     let gt = std::thread::spawn(move || { lets_play(&meta, &image); });
     gt.join().unwrap();
@@ -65,7 +79,7 @@ pub fn main() {
 
 fn lets_play(meta: &PathBuf, image: &PathBuf) {
     let c = Conf {
-        window_title: String::from("Geopardy v0.1"),
+        window_title: String::from("Jeopardy v0.1"),
         window_height: 1000,
         window_width: 1600,
         vsync: true,
@@ -90,29 +104,32 @@ impl Assets {
 
 pub struct Game {
     pub assets: Assets,
-    pub ui: GroundUi,
-    pub sprite: sprite::SpriteSheet,
+    pub ui: AssetTypeUi,
     pub marked: Vec<SpriteData>,
-    pub selection: Rect,
+    pub sprites_render: Vec<(DrawParam, usize, Rect)>,
     pub scroll: f32,
-    pub render: Vec<(Rc<Image>, DrawParam, Rect)>,
-    pub hovered: Option<Rect>,
+    pub image: Rc<Image>,
+    pub selected: Option<(Rect, usize)>,
+    pub hovered: Option<(Rect, usize)>,
 }
 
 impl Game {
     pub fn new(ctx: &mut Context, meta: &PathBuf, image: &PathBuf) -> GameResult<Game> {
         let sprite = Loader::load_sprite_sheet(ctx, meta, image)?;
         let assets = Assets::load(ctx)?;
-        let ui = GroundUi::new(ctx, &assets, Point::new(1400.0, 200.0))?;
+        let ui = AssetTypeUi::new(ctx, &assets, Point::new(1400.0, 200.0), None)?;
+
+        let marked = SpriteData::create(&sprite.info);
+        let image = sprite.image.clone();
 
         Ok(Game {
             ui,
             assets,
-            sprite,
-            marked: vec![],
-            selection: Rect::zero(),
+            marked,
+            sprites_render: vec![],
             scroll: 0.0,
-            render: vec![],
+            image,
+            selected: None,
             hovered: None,
         })
     }
@@ -120,40 +137,43 @@ impl Game {
     pub fn hover(&mut self, x: i32, y: i32) {
         let point = Point::new(x as f32, y as f32);
 
-        let dp = self.render.iter().find(|r| { ui::point_within(&point, &r.2)});
+        let dp = self.sprites_render
+            .iter()
+            .find(|tuple| ui::point_within(&point, &tuple.2));
 
         match dp {
-            Some(dp) => {
-                self.hovered = {
-                    Some(dp.2.clone())
-                }
-            }
+            Some(&(dp, ix, rect)) =>  { 
+                let mut r = rect.clone();
+                r.y -= self.scroll;
+                self.hovered = Some((r, ix)) 
+            },
             None => {
                 self.ui.hover(&point);
                 self.hovered = None
-            },
+            }
         };
     }
 }
 
 impl event::EventHandler for Game {
     fn update(&mut self, _ctx: &mut Context, _dt: Duration) -> GameResult<()> {
-        let sprite = &self.sprite;
-        let frames = sprite::FrameInfo::extract_frames(&sprite.info);
+        self.sprites_render.clear();
+        for frame in self.marked.iter() {
+            let ix = frame.index;
 
-        self.render.clear();
-        for (ix, frame) in sprite.info.frames.iter().enumerate() {
             let x = ix % 3;
             let y = ix / 3;
-            let src = frames[ix].segment;
+            let src = Rect::from(frame.on_screen_frame.clone());
             let dest = Point {
                 x: 200.0 + x as f32 * 400.0,
                 y: (200.0 + y as f32 * 400.0 + self.scroll),
             };
-            let geom::Size {
+            let geom::Rect {
+                x: _,
+                y: _,
                 w: orig_w,
                 h: orig_h,
-            } = frame.sourceSize;
+            } = frame.frame;
             let max = orig_w.max(orig_h);
             let scale = Point::new(380.0 / max, 380.0 / max);
             let param = DrawParam {
@@ -169,8 +189,7 @@ impl event::EventHandler for Game {
                 w: orig_w * 380.0 / max,
                 h: orig_h * 380.0 / max,
             };
-            self.render
-                .push((self.sprite.image.clone(), param, on_screen_coordinates));
+            self.sprites_render.push((param, ix, on_screen_coordinates));
         }
         Ok(())
     }
@@ -178,12 +197,18 @@ impl event::EventHandler for Game {
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         graphics::clear(ctx);
 
-        for &(ref img, params, _) in self.render.iter() {
-            graphics::draw_ex(ctx, &**img, params.clone())?;
+        for &(params, ix, rect) in self.sprites_render.iter() {
+            graphics::draw_ex(ctx, &*self.image, params.clone())?;
         }
 
         if let Some(hover) = self.hovered {
-            ui::draw_rect_with_outline(ctx, Color::new(0.0, 0.1, 1.0, 1.0), &hover)?;
+            ui::draw_rect_with_outline(ctx, Color::new(0.0, 0.1, 1.0, 1.0), 
+                &rect_with_scroll(&hover.0, self.scroll))?;
+        }
+
+        if let Some(selection) = self.selected {
+            ui::draw_rect_with_outline(ctx, Color::new(1.0, 1.0, 1.0, 1.0), 
+                &rect_with_scroll(&selection.0, self.scroll))?;
         }
 
         self.ui.draw(ctx);
@@ -202,6 +227,14 @@ impl event::EventHandler for Game {
     fn mouse_button_down_event(&mut self, button: event::MouseButton, x: i32, y: i32) {
         if button == event::MouseButton::Left {
             println!("Leftie!: {} {}", x, y);
+
+            if let Some(sel) = self.selected {
+                if ui::point_within(&Point::new(x as f32, y as f32), &rect_with_scroll(&sel.0, self.scroll)) {
+                    self.selected = None;
+                }
+            } else if self.hovered.is_some() {
+                self.selected = self.hovered.clone()
+            };
         }
     }
 
@@ -213,6 +246,11 @@ impl event::EventHandler for Game {
         if new_scroll < 0.0 {
             self.scroll = new_scroll
         };
-        self.hover(0, 0);
     }
+}
+
+fn rect_with_scroll(rect: &Rect, scroll: f32) -> Rect {
+    let mut r = rect.clone();
+    r.y += scroll;
+    r
 }
