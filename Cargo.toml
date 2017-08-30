@@ -1,18 +1,20 @@
 [package]
-name = "tilesheetgen"
-version = "0.1.0"
+name = "tilesheet-marker"
+version = "0.0.1"
 authors = ["Dmitriy Pogretskiy <dpogretskiy@gmail.com>"]
-build = "build.rs"
+#build = "build.rs"
+
+[lib]
+name = "marker"
+path = "src/lib.rs"
 
 [dependencies]
 serde_json = "*"
-serde = "*"
 serde_derive = "*"
-find_folder = "*"
-nalgebra = "*"
+serde = "*"
 
-ggez = { version = "*", features = ["cargo-resource-root"] }
-image = "*"
+#ggez = { version = "0.3", features = ["cargo-resource-root"] }
+#image = "*"
 
 [target.'cfg(windows)'.dependencies]
 native-windows-gui = "0.2.0"

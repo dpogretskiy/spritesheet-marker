@@ -1,9 +1,7 @@
-extern crate find_folder;
 extern crate ggez;
 extern crate image;
-extern crate nalgebra;
-extern crate serde;
 extern crate serde_json;
+extern crate serde;
 
 #[cfg(windows)]
 extern crate native_windows_gui as nwg;
