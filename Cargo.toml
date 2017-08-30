@@ -12,9 +12,8 @@ path = "src/lib.rs"
 serde_json = "*"
 serde_derive = "*"
 serde = "*"
-
-#ggez = { version = "0.3", features = ["cargo-resource-root"] }
-#image = "*"
+image = "*"
+ggez = { version = "0.3", features = ["cargo-resource-root"] }
 
 [target.'cfg(windows)'.dependencies]
 native-windows-gui = "0.2.0"

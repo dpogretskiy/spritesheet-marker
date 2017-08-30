@@ -1,5 +1,5 @@
-extern crate ggez;
 extern crate image;
+extern crate ggez;
 extern crate serde_json;
 extern crate serde;
 
