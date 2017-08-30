@@ -116,9 +116,10 @@ impl Game {
         let image = sprite.image.clone();
 
         let marked_path = marked_path(&meta_path);
-        let marked: Vec<SpriteData> = if let Some(data) = File::open(marked_path.clone())
-            .ok()
-            .and_then(|f| serde_json::from_reader(f).ok())
+        let marked: Vec<SpriteData> = if let Some(data) =
+            File::open(marked_path.clone()).ok().and_then(|f| {
+                serde_json::from_reader(f).ok()
+            })
         {
             data
         } else {
@@ -142,9 +143,9 @@ impl Game {
     pub fn hover(&mut self, x: i32, y: i32) {
         let point = Point::new(x as f32, y as f32);
 
-        let dp = self.sprites_render
-            .iter()
-            .find(|tuple| ui::point_within(&point, &tuple.2));
+        let dp = self.sprites_render.iter().find(|tuple| {
+            ui::point_within(&point, &tuple.2)
+        });
 
         match dp {
             Some(&(_, ix, rect)) => {

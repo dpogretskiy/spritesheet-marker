@@ -91,10 +91,12 @@ pub mod navigator {
             chooser.add_filter(&ff2);
             chooser.set_select_multiple(true);
 
-            chooser.add_buttons(&[
-                ("Open", ResponseType::Ok.into()),
-                ("Cancel", ResponseType::Cancel.into()),
-            ]);
+            chooser.add_buttons(
+                &[
+                    ("Open", ResponseType::Ok.into()),
+                    ("Cancel", ResponseType::Cancel.into()),
+                ],
+            );
 
             chooser.run();
             let files = chooser.get_filenames();

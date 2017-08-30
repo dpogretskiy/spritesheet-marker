@@ -142,9 +142,7 @@ impl AssetTypeUi {
                         let platform = PlatformUi::new(ctx, assets, sub_ui_offset, hor)?;
                         Box::new(platform)
                     }
-                    SpriteType::Object => Box::new(NoSubUi {
-                        state: Some(SpriteType::Object),
-                    }),
+                    SpriteType::Object => Box::new(NoSubUi { state: Some(SpriteType::Object) }),
                 };
                 Ok(ui)
             }
@@ -549,9 +547,7 @@ impl UiState for PlatformUi {
     }
 
     fn return_state(&self) -> Option<SpriteType> {
-        Some(SpriteType::Platform {
-            horizontal: self.state.clone(),
-        })
+        Some(SpriteType::Platform { horizontal: self.state.clone() })
     }
 }
 

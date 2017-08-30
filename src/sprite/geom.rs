@@ -10,7 +10,7 @@ pub struct Rect {
 
 impl Rect {
     pub fn new(x: f32, y: f32, w: f32, h: f32) -> Rect {
-        Rect {x, y, w, h}
+        Rect { x, y, w, h }
     }
 }
 
