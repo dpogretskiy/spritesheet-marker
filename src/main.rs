@@ -22,6 +22,7 @@ mod ui;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::rc::Rc;
+use std::fs::File;
 
 use file_navigator::navigator::FileNavigator;
 use sprite::{geom, Loader};
@@ -33,13 +34,29 @@ use ggez::graphics::*;
 use ggez::conf::Conf;
 use ggez::event::MouseState;
 
+fn marked_path(meta_path: &PathBuf) -> PathBuf {
+    let mut sp = meta_path.clone();
+    let name = String::from(sp.file_name().unwrap().to_string_lossy());
+    let mut split = name.split('.');
+
+    let ext = split.next_back().unwrap().clone();
+    let name: String = split.fold(String::new(), |mut a, s| {
+        a.push_str(s);
+        a
+    });
+    let new_name: String = format!("{}-marked.{}", name, ext);
+    sp.set_file_name(new_name);
+
+    sp
+}
+
 fn check_ext(p: &PathBuf, ext: &str) -> bool {
     let sr = format!("{}", p.display());
     sr.ends_with(ext)
 }
 
 fn select_file() -> (PathBuf, PathBuf) {
-    let selected = FileNavigator::select_files(&["png", "json"]);
+    let selected = FileNavigator::select_files();
 
     let meta = selected.iter().find(|p| check_ext(p, ".json")).unwrap();
     let image = selected.iter().find(|p| check_ext(p, ".png")).unwrap();
@@ -62,7 +79,7 @@ fn lets_play(meta: &PathBuf, image: &PathBuf) {
         window_icon: String::from(""),
     };
     let ctx = &mut Context::load_from_conf("game", "ez", c).unwrap();
-    let mut state = Game::new(ctx, meta, image).unwrap();
+    let mut state = Game::new(ctx, meta.clone(), image.clone()).unwrap();
     event::run(ctx, &mut state).unwrap();
 }
 
@@ -78,6 +95,7 @@ impl Assets {
 }
 
 pub struct Game {
+    marked_path: PathBuf,
     pub assets: Rc<Assets>,
     pub ui: AssetTypeUi,
     pub marked: Vec<SpriteData>,
@@ -90,15 +108,25 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn new(ctx: &mut Context, meta: &PathBuf, image: &PathBuf) -> GameResult<Game> {
-        let sprite = Loader::load_sprite_sheet(ctx, meta, image)?;
+    pub fn new(ctx: &mut Context, meta_path: PathBuf, image_path: PathBuf) -> GameResult<Game> {
+        let sprite = Loader::load_sprite_sheet(ctx, &meta_path, &image_path)?;
         let assets = Rc::new(Assets::load(ctx)?);
         let ui = AssetTypeUi::new(ctx, assets.clone(), Point::new(1400.0, 200.0), None)?;
 
-        let marked = SpriteData::create(&sprite.info);
         let image = sprite.image.clone();
 
+        let marked_path = marked_path(&meta_path);
+        let marked: Vec<SpriteData> = if let Some(data) = File::open(marked_path.clone())
+            .ok()
+            .and_then(|f| serde_json::from_reader(f).ok())
+        {
+            data
+        } else {
+            SpriteData::create(&sprite.info)
+        };
+
         Ok(Game {
+            marked_path,
             ui,
             assets,
             marked,
@@ -119,11 +147,11 @@ impl Game {
             .find(|tuple| ui::point_within(&point, &tuple.2));
 
         match dp {
-            Some(&(_, ix, rect)) =>  { 
+            Some(&(_, ix, rect)) => {
                 let mut r = rect.clone();
                 r.y -= self.scroll;
-                self.hovered = Some((r, ix)) 
-            },
+                self.hovered = Some((r, ix))
+            }
             None => {
                 self.ui.hover(&point);
                 self.hovered = None
@@ -135,28 +163,43 @@ impl Game {
         if let Some((_, ix)) = self.selected {
             self.marked[ix] = self.ui.full_state().unwrap();
             self.selected = None;
-        } else { panic!("Nothing is selected!") };
+        } else {
+            panic!("Nothing is selected!")
+        };
     }
 
     pub fn select(&mut self, ix: usize, ctx: &mut Context) {
         if let None = self.selected {
-            let ui = AssetTypeUi::new(ctx, self.assets.clone(), Point::new(1400.0, 200.0), Some(&self.marked[ix])).unwrap();
+            let ui = AssetTypeUi::new(
+                ctx,
+                self.assets.clone(),
+                Point::new(1400.0, 200.0),
+                Some(&self.marked[ix]),
+            ).unwrap();
             self.selected = self.hovered.clone();
             self.ui = ui;
-        } else { panic!("Selected already!") };
+        } else {
+            panic!("Selected already!")
+        };
     }
 
-    pub fn save(&mut self, ctx: &mut Context) {
+    pub fn save(&mut self) {
+        if self.selected.is_some() {
+            self.unselect();
+        }
 
+        let sp = &self.marked_path;
+
+        let file = File::create(sp).unwrap();
+        serde_json::to_writer_pretty(file, &self.marked).unwrap();
     }
 }
 
 impl event::EventHandler for Game {
     fn update(&mut self, ctx: &mut Context, _dt: Duration) -> GameResult<()> {
-
         let mut save_now = false;
 
-        if let Some(ref point) = self.click.map(|c| {c.clone()}) {
+        if let Some(ref point) = self.click.map(|c| c.clone()) {
             if let Some(sel) = self.selected {
                 if ui::point_within(&point, &rect_with_scroll(&sel.0, self.scroll)) {
                     self.unselect();
@@ -176,8 +219,8 @@ impl event::EventHandler for Game {
         self.click = None;
 
         if save_now {
-            self.save(ctx)
-        }
+            self.save();
+        };
 
         self.sprites_render.clear();
         for frame in self.marked.iter() {
@@ -224,13 +267,19 @@ impl event::EventHandler for Game {
         }
 
         if let Some(hover) = self.hovered {
-            ui::draw_rect_with_outline(ctx, Color::new(0.0, 0.1, 1.0, 1.0), 
-                &rect_with_scroll(&hover.0, self.scroll))?;
+            ui::draw_rect_with_outline(
+                ctx,
+                Color::new(0.0, 0.1, 1.0, 1.0),
+                &rect_with_scroll(&hover.0, self.scroll),
+            )?;
         }
 
         if let Some(selection) = self.selected {
-            ui::draw_rect_with_outline(ctx, Color::new(1.0, 1.0, 1.0, 1.0), 
-                &rect_with_scroll(&selection.0, self.scroll))?;
+            ui::draw_rect_with_outline(
+                ctx,
+                Color::new(1.0, 1.0, 1.0, 1.0),
+                &rect_with_scroll(&selection.0, self.scroll),
+            )?;
         }
 
         if self.selected.is_some() {

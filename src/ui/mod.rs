@@ -99,8 +99,8 @@ impl AssetTypeUi {
         let save = SimpleButton::new(save_t, save_r);
 
         let selected = match ui.return_state() {
-            Some(SpriteType::Ground{..}) => Some(ground.rect.clone()),
-            Some(SpriteType::Platform{..}) => Some(platform.rect.clone()),
+            Some(SpriteType::Ground { .. }) => Some(ground.rect.clone()),
+            Some(SpriteType::Platform { .. }) => Some(platform.rect.clone()),
             Some(SpriteType::Object) => Some(object.rect.clone()),
             None => None,
         };
@@ -213,32 +213,32 @@ impl UiState for AssetTypeUi {
             )?;
             self.selected = Some(self.platform.rect.clone());
             self.sub_ui = ui;
-        } else { self.sub_ui.interact(ctx, point)?; };
+        } else {
+            self.sub_ui.interact(ctx, point)?;
+        };
         Ok(())
     }
 
     fn hover(&mut self, point: &Point) -> Option<Rect> {
-        let rect = vec![&self.object, &self.platform, &self.ground]
+        let rect: Option<Rect> = vec![&self.object, &self.platform, &self.ground]
             .iter()
             .find(|b| b.point_within(point, &self.offset))
-            .map(|b| b.rect.clone()).or_else(|| {
-                if self.save.point_within(point, &Point::zero()) {
-                    Some(self.save.rect.clone())
-                } else { None }
+            .map(|b| b.rect.clone())
+            .map(|mut rect| {
+                rect.x += self.offset.x;
+                rect.y += self.offset.y;
+                rect
+            })
+            .or_else(|| if self.save.point_within(point, &Point::zero()) {
+                Some(self.save.rect.clone())
+            } else {
+                None
             });
-        let offseted = match rect {
-            Some(mut r) => {
-                r.x += self.offset.x;
-                r.y += self.offset.y;
-                Some(r)
-            }
-            None => None,
-        };
-        self.hovered = offseted;
-        if let None = offseted {
+        self.hovered = rect;
+        if let None = rect {
             self.sub_ui.hover(point);
         };
-        offseted
+        rect
     }
 
     fn return_state(&self) -> Option<SpriteType> {
@@ -324,24 +324,36 @@ impl GroundUi {
     fn draw_selected(&self, ctx: &mut Context) {
         let color = Color::new(0.0, 0.8, 0.2, 1.0);
         let offset = &self.offset;
-        
+
         if self.hor(Horizontal::Left) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.left.rect, offset)).unwrap();
+            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.left.rect, offset))
+                .unwrap();
         };
         if self.hor(Horizontal::Center) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.h_center.rect, offset)).unwrap();
+            draw_rect_with_outline(
+                ctx,
+                color.clone(),
+                &offset_rect(&self.h_center.rect, offset),
+            ).unwrap();
         };
         if self.hor(Horizontal::Right) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.right.rect, offset)).unwrap();
+            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.right.rect, offset))
+                .unwrap();
         };
         if self.vert(Vertical::Top) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.top.rect, offset)).unwrap();
+            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.top.rect, offset))
+                .unwrap();
         };
         if self.vert(Vertical::Center) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.v_center.rect, offset)).unwrap();
+            draw_rect_with_outline(
+                ctx,
+                color.clone(),
+                &offset_rect(&self.v_center.rect, offset),
+            ).unwrap();
         };
         if self.vert(Vertical::Bottom) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.bottom.rect, offset)).unwrap();
+            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.bottom.rect, offset))
+                .unwrap();
         };
     }
 }
@@ -364,37 +376,37 @@ impl UiState for GroundUi {
             if !self.hor(Horizontal::Left) {
                 distinct_vec_add(&mut self.state.1, Horizontal::Left);
             } else {
-                self.state.1.retain(|h| {*h != Horizontal::Left});
+                self.state.1.retain(|h| *h != Horizontal::Left);
             };
         } else if self.h_center.point_within(point, &self.offset) {
             if !self.hor(Horizontal::Center) {
                 distinct_vec_add(&mut self.state.1, Horizontal::Center);
             } else {
-                self.state.1.retain(|h| {*h != Horizontal::Center});
+                self.state.1.retain(|h| *h != Horizontal::Center);
             };
         } else if self.right.point_within(point, &self.offset) {
             if !self.hor(Horizontal::Right) {
                 distinct_vec_add(&mut self.state.1, Horizontal::Right);
             } else {
-                self.state.1.retain(|h| {*h != Horizontal::Right});
+                self.state.1.retain(|h| *h != Horizontal::Right);
             };
         } else if self.top.point_within(point, &self.offset) {
             if !self.vert(Vertical::Top) {
                 distinct_vec_add(&mut self.state.0, Vertical::Top);
             } else {
-                self.state.0.retain(|h| {*h != Vertical::Top});
+                self.state.0.retain(|h| *h != Vertical::Top);
             };
         } else if self.v_center.point_within(point, &self.offset) {
             if !self.vert(Vertical::Center) {
                 distinct_vec_add(&mut self.state.0, Vertical::Center);
             } else {
-                self.state.0.retain(|h| {*h != Vertical::Center});
+                self.state.0.retain(|h| *h != Vertical::Center);
             };
         } else if self.bottom.point_within(point, &self.offset) {
             if !self.vert(Vertical::Bottom) {
                 distinct_vec_add(&mut self.state.0, Vertical::Bottom);
             } else {
-                self.state.0.retain(|h| {*h != Vertical::Bottom});
+                self.state.0.retain(|h| *h != Vertical::Bottom);
             };
         }
         Ok(())
@@ -467,15 +479,18 @@ impl PlatformUi {
     fn draw_selected(&self, ctx: &mut Context) {
         let color = Color::new(0.0, 0.8, 0.2, 1.0);
         let offset = &self.offset;
-        
+
         if self.hor(Horizontal::Left) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.left.rect, offset)).unwrap();
+            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.left.rect, offset))
+                .unwrap();
         };
         if self.hor(Horizontal::Center) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.center.rect, offset)).unwrap();
+            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.center.rect, offset))
+                .unwrap();
         };
         if self.hor(Horizontal::Right) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.right.rect, offset)).unwrap();
+            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.right.rect, offset))
+                .unwrap();
         };
     }
 }
@@ -498,19 +513,19 @@ impl UiState for PlatformUi {
             if !self.hor(Horizontal::Left) {
                 distinct_vec_add(&mut self.state, Horizontal::Left);
             } else {
-                self.state.retain(|h| {*h != Horizontal::Left});
+                self.state.retain(|h| *h != Horizontal::Left);
             };
         } else if self.center.point_within(point, &self.offset) {
             if !self.hor(Horizontal::Center) {
                 distinct_vec_add(&mut self.state, Horizontal::Center);
             } else {
-                self.state.retain(|h| {*h != Horizontal::Center});
+                self.state.retain(|h| *h != Horizontal::Center);
             };
         } else if self.right.point_within(point, &self.offset) {
             if !self.hor(Horizontal::Right) {
                 distinct_vec_add(&mut self.state, Horizontal::Right);
             } else {
-                self.state.retain(|h| {*h != Horizontal::Right});
+                self.state.retain(|h| *h != Horizontal::Right);
             };
         }
         Ok(())

@@ -36,9 +36,7 @@ impl SpriteType {
     }
 
     pub fn empty_platform() -> SpriteType {
-        SpriteType::Platform {
-            horizontal: vec![]
-        }
+        SpriteType::Platform { horizontal: vec![] }
     }
 }
 
@@ -58,20 +56,24 @@ pub struct SpriteData {
 impl SpriteData {
     pub fn create(info: &SpriteSheetInfo) -> Vec<SpriteData> {
         let frames = FrameInfo::extract_frames(&info);
-        let marked: Vec<SpriteData> = info.frames.iter().enumerate().map(|(ix, sd)| {
-            let on_image_frame = sd.frame.clone();
-            let on_screen_frame = frames[ix].segment;
-            SpriteData {
-                on_screen_frame: geom::Rect::from(on_screen_frame),
-                frame: on_image_frame,
-                markers: SpriteType::Ground {
-                    horizontal: vec![],
-                    vertical: vec![],
-                },
-                name: sd.filename.clone(),
-                index: ix,
-            }
-        }).collect();
+        let marked: Vec<SpriteData> = info.frames
+            .iter()
+            .enumerate()
+            .map(|(ix, sd)| {
+                let on_image_frame = sd.frame.clone();
+                let on_screen_frame = frames[ix].segment;
+                SpriteData {
+                    on_screen_frame: geom::Rect::from(on_screen_frame),
+                    frame: on_image_frame,
+                    markers: SpriteType::Ground {
+                        horizontal: vec![],
+                        vertical: vec![],
+                    },
+                    name: sd.filename.clone(),
+                    index: ix,
+                }
+            })
+            .collect();
         marked
     }
 }

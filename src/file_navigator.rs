@@ -8,21 +8,12 @@ pub mod navigator {
     pub struct FileNavigator {}
 
     impl FileNavigator {
-        pub fn select_files(extensions: &[&str]) -> Vec<PathBuf> {
+        pub fn select_files() -> Vec<PathBuf> {
             let mut selected: Vec<String> = Vec::new();
 
             let app: Ui<usize> = Ui::new().expect("Failed to initialize the Ui");
 
-            let ext_filter = if extensions.is_empty() {
-                None
-            } else {
-                let exts = extensions
-                    .iter()
-                    .map(|e| format!("*.{}", e))
-                    .collect::<Vec<String>>()
-                    .join(";");
-                Some(format!("Needed({})|All(*.*)", exts))
-            };
+            let ext_filter = format!("Needed(*.png;*.json)|All(*.*)", exts);
 
             FileNavigator::setup_ui(&app, ext_filter).unwrap();
 
@@ -45,14 +36,14 @@ pub mod navigator {
             selected
         }
 
-        fn setup_ui<'a>(ui: &Ui<usize>, filter: Option<String>) -> Result<(), Error> {
+        fn setup_ui<'a>(ui: &Ui<usize>, filter: String) -> Result<(), Error> {
             let dialog: FileDialogT<String, usize> = FileDialogT {
                 title: String::from("Select something"),
                 parent: None,
                 action: FileDialogAction::Open,
                 multiselect: true,
                 default_folder: None,
-                filters: filter,
+                filters: Some(filter),
             };
 
             ui.pack_control(&1, dialog);
@@ -71,7 +62,7 @@ pub mod navigator {
     pub struct FileNavigator;
 
     impl FileNavigator {
-        pub fn select_files(extensions: &[&str]) -> Vec<PathBuf> {
+        pub fn select_files() -> Vec<PathBuf> {
             if gtk::init().is_err() {
                 println!("Failed to GTK!");
                 panic!();
@@ -87,12 +78,12 @@ pub mod navigator {
                 FileChooserAction::Open,
             );
 
-            let mut ff = FileFilter::new();
+            let ff = FileFilter::new();
             FileFilter::add_pattern(&ff, "*.png");
             FileFilter::add_pattern(&ff, "*.json");
             FileFilter::set_name(&ff, "spritesheet");
 
-            let mut ff2 = FileFilter::new();
+            let ff2 = FileFilter::new();
             FileFilter::add_pattern(&ff2, "*.*");
             FileFilter::set_name(&ff2, "All");
 

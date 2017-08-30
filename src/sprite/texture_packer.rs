@@ -7,7 +7,7 @@ use super::geom::*;
 #[derive(Deserialize, Debug, Clone)]
 pub struct SpriteSheetInfo {
     pub frames: Vec<Sprite>,
-    pub meta: SpriteSheetMeta
+    pub meta: SpriteSheetMeta,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -19,7 +19,7 @@ pub struct Sprite {
     pub trimmed: bool,
     pub spriteSourceSize: Rect,
     pub sourceSize: Size,
-    pub pivot: Point
+    pub pivot: Point,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -30,7 +30,7 @@ pub struct SpriteSheetMeta {
     pub format: String,
     pub size: Size,
     pub scale: String,
-    pub smartupdate: String
+    pub smartupdate: String,
 }
 
 use std::path::Path;
@@ -41,8 +41,6 @@ impl SpriteSheetInfo {
     pub fn load_info<P: AsRef<Path>>(path: P) -> GameResult<SpriteSheetInfo> {
         let file = File::open(path).unwrap();
 
-        serde_json::from_reader(file).map_err(|e| {
-            GameError::ResourceLoadError(format!("{}", e))
-        })
+        serde_json::from_reader(file).map_err(|e| GameError::ResourceLoadError(format!("{}", e)))
     }
 }
