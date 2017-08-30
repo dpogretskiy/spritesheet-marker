@@ -40,7 +40,6 @@ fn check_ext(p: &PathBuf, ext: &str) -> bool {
 
 fn select_file() -> (PathBuf, PathBuf) {
     let selected = FileNavigator::select_files(&["png", "json"]);
-    println!("{:?}", selected);
 
     let meta = selected.iter().find(|p| check_ext(p, ".json")).unwrap();
     let image = selected.iter().find(|p| check_ext(p, ".png")).unwrap();
@@ -137,7 +136,6 @@ impl Game {
             self.marked[ix] = self.ui.full_state().unwrap();
             self.selected = None;
         } else { panic!("Nothing is selected!") };
-        println!("State: {:?}", self.marked);
     }
 
     pub fn select(&mut self, ix: usize, ctx: &mut Context) {
@@ -159,9 +157,6 @@ impl event::EventHandler for Game {
         let mut save_now = false;
 
         if let Some(ref point) = self.click.map(|c| {c.clone()}) {
-            println!("Clicky! {:?}", point);
-            println!("Selected: {:?}", self.selected);
-            println!("Hovered: {:?}", self.hovered);
             if let Some(sel) = self.selected {
                 if ui::point_within(&point, &rect_with_scroll(&sel.0, self.scroll)) {
                     self.unselect();
@@ -175,7 +170,6 @@ impl event::EventHandler for Game {
                     };
                 };
             } else if let Some(hovered) = self.hovered {
-                println!("Select!: {}", hovered.1);
                 self.select(hovered.1, ctx);
             };
         };
