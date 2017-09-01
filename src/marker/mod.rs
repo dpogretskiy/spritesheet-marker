@@ -4,10 +4,16 @@ use super::sprite::*;
 use super::sprite::texture_packer::*;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Debug)]
-pub enum Vertical {
-    Top,
-    Bottom,
-    Center,
+pub enum Square {
+    LT,
+    MT,
+    RT,
+    LM,
+    MM,
+    RM,
+    LB,
+    MB,
+    RB,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Debug)]
@@ -21,18 +27,12 @@ pub enum Horizontal {
 pub enum SpriteType {
     Object,
     Platform { horizontal: Vec<Horizontal> },
-    Ground {
-        vertical: Vec<Vertical>,
-        horizontal: Vec<Horizontal>,
-    },
+    Ground { square: Vec<Square> },
 }
 
 impl SpriteType {
     pub fn empty_ground() -> SpriteType {
-        SpriteType::Ground {
-            vertical: vec![],
-            horizontal: vec![],
-        }
+        SpriteType::Ground { square: vec![] }
     }
 
     pub fn empty_platform() -> SpriteType {
@@ -65,10 +65,7 @@ impl SpriteData {
                 SpriteData {
                     on_screen_frame: geom::Rect::from(on_screen_frame),
                     frame: on_image_frame,
-                    markers: SpriteType::Ground {
-                        horizontal: vec![],
-                        vertical: vec![],
-                    },
+                    markers: SpriteType::Ground { square: vec![] },
                     name: sd.filename.clone(),
                     index: ix,
                 }

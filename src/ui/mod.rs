@@ -10,6 +10,8 @@ use std::hash::Hash;
 use std::rc::Rc;
 use std::borrow::Borrow;
 use ggez::GameError;
+use serde_json;
+use std::collections::HashMap;
 
 const H_SPACE: f32 = 120.0;
 const W_SPACE: f32 = 50.0;
@@ -17,38 +19,65 @@ const W_SPACE: f32 = 50.0;
 const W_SIZE: f32 = 115.0;
 const H_SIZE: f32 = 45.0;
 
-pub struct SimpleButton {
+type SBST = SimpleButton<SpriteType>;
+
+pub struct SimpleButton<T> {
     pub rect: Rect,
     pub text: Text,
+    pub offset: Point,
+    pub action: Box<(FnMut(&mut T) -> ())>,
 }
 
-impl PartialEq for SimpleButton {
-    fn eq(&self, other: &SimpleButton) -> bool {
+impl<T> PartialEq for SimpleButton<T> {
+    fn eq(&self, other: &SimpleButton<T>) -> bool {
         self.rect == other.rect && self.text.contents() == other.text.contents()
     }
 }
 
-impl SimpleButton {
-    pub fn new(text: Text, rect: Rect) -> SimpleButton {
-        SimpleButton { rect, text }
+impl<T> SimpleButton<T> {
+    pub fn new33(
+        ctx: &mut Context,
+        assets: Rc<Assets>,
+        text: &str,
+        position: usize,
+        offset: &Point,
+        action: Box<FnMut(&mut T) -> ()>,
+    ) -> SimpleButton<T> {
+        let v = (position - 1) / 3;
+        let h = (position - 1) % 3;
+
+        let text = Text::new(ctx, text, &assets.font).unwrap();
+        let rect = Rect::new(
+            H_SPACE * (h - 1) as f32 + offset.x,
+            W_SPACE * (v - 1) as f32 + offset.y,
+            W_SIZE,
+            H_SIZE,
+        );
+
+        SimpleButton::<T> {
+            rect,
+            text,
+            offset: offset.clone(),
+            action: action,
+        }
     }
 
-    pub fn point_within(&self, point: &Point, offset: &Point) -> bool {
-        let mut c_rect = self.rect.clone();
-        c_rect.x += offset.x;
-        c_rect.y += offset.y;
-
-        self::point_within(point, &c_rect)
-    }
-
-    pub fn draw(&self, ctx: &mut Context, offset: &Point) {
-        let t_dest = Point {
-            x: self.rect.x + offset.x,
-            y: self.rect.y + offset.y,
+    pub fn interact(&self, point: &Point, val: &mut T) -> bool {
+        let yes = point_within(point, &self.rect);
+        if yes {
+            self.action.as_ref()(val)
         };
-        let r = offset_rect(&self.rect, offset);
-        graphics::rectangle(ctx, DrawMode::Line, r).unwrap();
-        graphics::draw(ctx, &self.text, t_dest, 0.0).unwrap();
+        yes
+    }
+
+    pub fn hover(&self, point: &Point) -> bool {
+        point_within(point, &self.rect)
+    }
+
+    pub fn draw(&self, ctx: &mut Context) {
+        let center = center(&self.rect);
+        graphics::rectangle(ctx, DrawMode::Line, self.rect.clone()).unwrap();
+        graphics::draw(ctx, &self.text, center, 0.0).unwrap();
     }
 }
 
@@ -59,6 +88,8 @@ pub trait UiState {
     fn return_state(&self) -> Option<SpriteType>;
 }
 
+type SBAT = SimpleButton<(AssetTypeUi)>;
+
 pub struct AssetTypeUi {
     assets: Rc<Assets>,
     offset: Point,
@@ -66,10 +97,10 @@ pub struct AssetTypeUi {
     state: Option<SpriteData>,
     selected: Option<Rect>,
     hovered: Option<Rect>,
-    object: SimpleButton,
-    platform: SimpleButton,
-    ground: SimpleButton,
-    save: SimpleButton,
+    object: SBAT,
+    platform: SBAT,
+    ground: SBAT,
+    save: SBAT,
 }
 
 impl AssetTypeUi {
@@ -79,24 +110,75 @@ impl AssetTypeUi {
         offset: Point,
         data: Option<&SpriteData>,
     ) -> GameResult<AssetTypeUi> {
-        let ui =
-            AssetTypeUi::build_sub_ui(data.map(|d| &d.markers), &offset, ctx, assets.borrow())?;
+        let ui = AssetTypeUi::build_sub_ui(data.map(|d| &d.markers), &offset, ctx, assets)?;
+        let op = &offset;
 
-        let obj_t = Text::new(ctx, "Object", &assets.font)?;
-        let plat_t = Text::new(ctx, "Platform", &assets.font)?;
-        let ground_t = Text::new(ctx, "Ground", &assets.font)?;
+        let object: SBAT = SimpleButton::new33(
+            ctx,
+            assets,
+            "Object",
+            4,
+            op,
+            Box::new(|tuple: (&mut AssetTypeUi, &mut Context)| {
+                let atui = tuple.0;
+                let ctx = tuple.1;
 
-        let left_r = Rect::new(-H_SPACE, -W_SPACE, W_SIZE, H_SIZE);
-        let h_center_r = Rect::new(0.0, -W_SPACE, W_SIZE, H_SIZE);
-        let right_r = Rect::new(H_SPACE, -W_SPACE, W_SIZE, H_SIZE);
 
-        let object = SimpleButton::new(obj_t, left_r);
-        let platform = SimpleButton::new(plat_t, h_center_r);
-        let ground = SimpleButton::new(ground_t, right_r);
+                let ui = AssetTypeUi::build_sub_ui(
+                    Some(&SpriteType::Object),
+                    &atui.offset,
+                    ctx,
+                    atui.assets,
+                ).unwrap();
+                atui.selected = Some(atui.object.rect.clone());
+                atui.sub_ui = ui;
+            }),
+        );
 
-        let save_t = Text::new(ctx, "Save", &assets.font)?;
-        let save_r = Rect::new(1600.0 - 130.0, 1000.0 - 130.0, W_SIZE, H_SIZE);
-        let save = SimpleButton::new(save_t, save_r);
+        let platform: SBAT = SimpleButton::new33(
+            ctx,
+            assets,
+            "Platform",
+            5,
+            op,
+            Box::new(|atui: &mut AssetTypeUi| {
+                let ui = AssetTypeUi::build_sub_ui(
+                    Some(&SpriteType::empty_ground()),
+                    &atui.offset,
+                    ctx,
+                    atui.assets,
+                ).unwrap();
+                atui.selected = Some(atui.ground.rect.clone());
+                atui.sub_ui = ui;
+            }),
+        );
+
+        let ground: SBAT = SimpleButton::new33(
+            ctx,
+            assets,
+            "Ground",
+            6,
+            op,
+            Box::new(|atui: &mut AssetTypeUi| {
+                let ui = AssetTypeUi::build_sub_ui(
+                    Some(&SpriteType::empty_platform()),
+                    &atui.offset,
+                    ctx,
+                    atui.assets,
+                ).unwrap();
+                atui.selected = Some(atui.platform.rect.clone());
+                atui.sub_ui = ui;
+            }),
+        );
+
+        let save: SBAT = SimpleButton::new33(
+            ctx,
+            assets,
+            "SAVE!",
+            5,
+            &Point::new(1450.0, 850.0),
+            Box::new(|mut x: &mut AssetTypeUi| ()),
+        );
 
         let selected = match ui.return_state() {
             Some(SpriteType::Ground { .. }) => Some(ground.rect.clone()),
@@ -123,7 +205,7 @@ impl AssetTypeUi {
         data: Option<&SpriteType>,
         offset: &Point,
         ctx: &mut Context,
-        assets: &Assets,
+        assets: Rc<Assets>,
     ) -> GameResult<Box<UiState>> {
         match data.map(|d| d.clone()) {
             Some(markers) => {
@@ -131,18 +213,17 @@ impl AssetTypeUi {
                 sub_ui_offset.y += 300.0;
 
                 let ui: Box<UiState> = match markers {
-                    SpriteType::Ground {
-                        vertical: vert,
-                        horizontal: hor,
-                    } => {
-                        let ground = GroundUi::new(ctx, assets, sub_ui_offset, (vert, hor))?;
+                    SpriteType::Ground { square: sqr } => {
+                        let ground = GroundUi::new(ctx, assets, sub_ui_offset, sqr)?;
                         Box::new(ground)
                     }
                     SpriteType::Platform { horizontal: hor } => {
                         let platform = PlatformUi::new(ctx, assets, sub_ui_offset, hor)?;
                         Box::new(platform)
                     }
-                    SpriteType::Object => Box::new(NoSubUi { state: Some(SpriteType::Object) }),
+                    SpriteType::Object => Box::new(NoSubUi {
+                        state: Some(SpriteType::Object),
+                    }),
                 };
                 Ok(ui)
             }
@@ -164,17 +245,16 @@ impl AssetTypeUi {
 
 impl UiState for AssetTypeUi {
     fn draw(&self, ctx: &mut Context) {
-        self.object.draw(ctx, &self.offset);
-        self.platform.draw(ctx, &self.offset);
-        self.ground.draw(ctx, &self.offset);
-        self.save.draw(ctx, &Point::zero());
+        self.object.draw(ctx);
+        self.platform.draw(ctx);
+        self.ground.draw(ctx);
+        self.save.draw(ctx);
 
         if let Some(h) = self.hovered {
             draw_rect_with_outline(ctx, Color::new(0.8, 0.0, 0.0, 1.0), &h).unwrap();
         };
 
         if let Some(s) = self.selected {
-            let s = offset_rect(&s, &self.offset);
             draw_rect_with_outline(ctx, Color::new(0.0, 0.8, 0.2, 1.0), &s).unwrap();
         }
 
@@ -182,35 +262,11 @@ impl UiState for AssetTypeUi {
     }
 
     fn interact(&mut self, ctx: &mut Context, point: &Point) -> GameResult<()> {
-        if self.save.point_within(point, &Point::zero()) {
+        if (self.ground.interact(point, self)) {
+        } else if (self.platform.interact(point, self)) {
+        } else if (self.object.interact(point, self)) {
+        } else if (self.save.interact(point, self)) {
             return Err(GameError::from(String::from("Save now")));
-        } else if self.object.point_within(point, &self.offset) {
-            let ui = AssetTypeUi::build_sub_ui(
-                Some(&SpriteType::Object),
-                &self.offset,
-                ctx,
-                self.assets.borrow(),
-            )?;
-            self.selected = Some(self.object.rect.clone());
-            self.sub_ui = ui;
-        } else if self.ground.point_within(point, &self.offset) {
-            let ui = AssetTypeUi::build_sub_ui(
-                Some(&SpriteType::empty_ground()),
-                &self.offset,
-                ctx,
-                self.assets.borrow(),
-            )?;
-            self.selected = Some(self.ground.rect.clone());
-            self.sub_ui = ui;
-        } else if self.platform.point_within(point, &self.offset) {
-            let ui = AssetTypeUi::build_sub_ui(
-                Some(&SpriteType::empty_platform()),
-                &self.offset,
-                ctx,
-                self.assets.borrow(),
-            )?;
-            self.selected = Some(self.platform.rect.clone());
-            self.sub_ui = ui;
         } else {
             self.sub_ui.interact(ctx, point)?;
         };
@@ -218,20 +274,10 @@ impl UiState for AssetTypeUi {
     }
 
     fn hover(&mut self, point: &Point) -> Option<Rect> {
-        let rect: Option<Rect> = vec![&self.object, &self.platform, &self.ground]
+        let rect: Option<Rect> = vec![&self.object, &self.platform, &self.ground, &self.save]
             .iter()
-            .find(|b| b.point_within(point, &self.offset))
-            .map(|b| b.rect.clone())
-            .map(|mut rect| {
-                rect.x += self.offset.x;
-                rect.y += self.offset.y;
-                rect
-            })
-            .or_else(|| if self.save.point_within(point, &Point::zero()) {
-                Some(self.save.rect.clone())
-            } else {
-                None
-            });
+            .find(|b| b.hover(point))
+            .map(|b| b.rect.clone());
         self.hovered = rect;
         if let None = rect {
             self.sub_ui.hover(point);
@@ -247,119 +293,83 @@ impl UiState for AssetTypeUi {
 pub struct GroundUi {
     offset: Point,
     hovered: Option<Rect>,
-    state: (Vec<Vertical>, Vec<Horizontal>),
-    left: SimpleButton,
-    h_center: SimpleButton,
-    right: SimpleButton,
-    top: SimpleButton,
-    v_center: SimpleButton,
-    bottom: SimpleButton,
+    state: Vec<Square>,
+    all: Vec<Square>,
+    buttons: Vec<SBGU>,
 }
 
+type SBGU = SimpleButton<Vec<Square>>;
 impl GroundUi {
     pub fn new(
         ctx: &mut Context,
-        assets: &Assets,
+        assets: Rc<Assets>,
         offset: Point,
-        state: (Vec<Vertical>, Vec<Horizontal>),
+        state: Vec<Square>,
     ) -> GameResult<GroundUi> {
-        let left_t = Text::new(ctx, "Left", &assets.font)?;
-        let right_t = Text::new(ctx, "Right", &assets.font)?;
+        let op = &offset;
 
-        let middle_t = Text::new(ctx, "Middle", &assets.font)?;
+        let all = vec![
+            Square::LT,
+            Square::MT,
+            Square::RT,
+            Square::LM,
+            Square::MM,
+            Square::RM,
+            Square::LB,
+            Square::MB,
+            Square::RB,
+        ];
 
-        let top_t = Text::new(ctx, "Top", &assets.font)?;
-        let bottom_t = Text::new(ctx, "Bottom", &assets.font)?;
-
-        let left_r = Rect::new(-H_SPACE, -W_SPACE, W_SIZE, H_SIZE);
-        let h_center_r = Rect::new(0.0, -W_SPACE, W_SIZE, H_SIZE);
-        let right_r = Rect::new(H_SPACE, -W_SPACE, W_SIZE, H_SIZE);
-
-        let top_r = Rect::new(0.0, 1.5 * W_SPACE, W_SIZE, H_SIZE);
-        let v_center_r = Rect::new(0.0, 2.5 * W_SPACE, W_SIZE, H_SIZE);
-        let bottom_r = Rect::new(0.0, 3.5 * W_SPACE, W_SIZE, H_SIZE);
-
-        let left = SimpleButton::new(left_t, left_r);
-        let h_center = SimpleButton::new(middle_t.clone(), h_center_r);
-        let right = SimpleButton::new(right_t, right_r);
-
-        let top = SimpleButton::new(top_t, top_r);
-        let v_center = SimpleButton::new(middle_t, v_center_r);
-        let bottom = SimpleButton::new(bottom_t, bottom_r);
+        let buttons: Vec<SBGU> = all.iter()
+            .enumerate()
+            .map(|(ix, s)| {
+                SimpleButton::new33(
+                    ctx,
+                    assets,
+                    serde_json::to_string(s).unwrap().as_str(),
+                    ix + 1,
+                    &offset,
+                    Box::new(|state: &mut Vec<Square>| {
+                        if !state.contains(&s) {
+                            distinct_vec_add(&mut state, *s);
+                        } else {
+                            state.retain(|i| *i != *s);
+                        };
+                    }),
+                )
+            })
+            .collect();
 
         Ok(GroundUi {
             offset,
-            left,
-            h_center,
-            right,
-            top,
-            v_center,
-            bottom,
+            buttons,
+            all,
             hovered: None,
             state,
         })
     }
 
-    pub fn to_vec(&self) -> Vec<&SimpleButton> {
-        vec![
-            &self.left,
-            &self.right,
-            &self.v_center,
-            &self.h_center,
-            &self.top,
-            &self.bottom,
-        ]
-    }
-
-    fn hor(&self, h: Horizontal) -> bool {
-        self.state.1.contains(&h)
-    }
-
-    fn vert(&self, v: Vertical) -> bool {
-        self.state.0.contains(&v)
-    }
-
     fn draw_selected(&self, ctx: &mut Context) {
         let color = Color::new(0.0, 0.8, 0.2, 1.0);
-        let offset = &self.offset;
 
-        if self.hor(Horizontal::Left) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.left.rect, offset))
-                .unwrap();
-        };
-        if self.hor(Horizontal::Center) {
-            draw_rect_with_outline(
-                ctx,
-                color.clone(),
-                &offset_rect(&self.h_center.rect, offset),
-            ).unwrap();
-        };
-        if self.hor(Horizontal::Right) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.right.rect, offset))
-                .unwrap();
-        };
-        if self.vert(Vertical::Top) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.top.rect, offset))
-                .unwrap();
-        };
-        if self.vert(Vertical::Center) {
-            draw_rect_with_outline(
-                ctx,
-                color.clone(),
-                &offset_rect(&self.v_center.rect, offset),
-            ).unwrap();
-        };
-        if self.vert(Vertical::Bottom) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.bottom.rect, offset))
-                .unwrap();
-        };
+        let all_ix = self.all
+            .iter()
+            .enumerate()
+            .map(|(s, ix)| (ix, s))
+            .collect::<HashMap<_, _>>();
+
+        for s in self.state.iter() {
+            let ix = all_ix.get(s).unwrap();
+            let rect = self.buttons[*ix].rect.clone();
+            draw_rect_with_outline(ctx, color.clone(), &rect).unwrap();
+        }
     }
 }
 
 impl UiState for GroundUi {
     fn draw(&self, ctx: &mut Context) {
-        for b in self.to_vec().iter() {
-            b.draw(ctx, &self.offset);
+        for b in self.buttons.iter() {
+            b.draw(ctx);
         }
 
         self.draw_selected(ctx);
@@ -369,92 +379,78 @@ impl UiState for GroundUi {
         };
     }
 
-    fn interact(&mut self, _: &mut Context, point: &Point) -> GameResult<()> {
-        if self.left.point_within(point, &self.offset) {
-            if !self.hor(Horizontal::Left) {
-                distinct_vec_add(&mut self.state.1, Horizontal::Left);
-            } else {
-                self.state.1.retain(|h| *h != Horizontal::Left);
-            };
-        } else if self.h_center.point_within(point, &self.offset) {
-            if !self.hor(Horizontal::Center) {
-                distinct_vec_add(&mut self.state.1, Horizontal::Center);
-            } else {
-                self.state.1.retain(|h| *h != Horizontal::Center);
-            };
-        } else if self.right.point_within(point, &self.offset) {
-            if !self.hor(Horizontal::Right) {
-                distinct_vec_add(&mut self.state.1, Horizontal::Right);
-            } else {
-                self.state.1.retain(|h| *h != Horizontal::Right);
-            };
-        } else if self.top.point_within(point, &self.offset) {
-            if !self.vert(Vertical::Top) {
-                distinct_vec_add(&mut self.state.0, Vertical::Top);
-            } else {
-                self.state.0.retain(|h| *h != Vertical::Top);
-            };
-        } else if self.v_center.point_within(point, &self.offset) {
-            if !self.vert(Vertical::Center) {
-                distinct_vec_add(&mut self.state.0, Vertical::Center);
-            } else {
-                self.state.0.retain(|h| *h != Vertical::Center);
-            };
-        } else if self.bottom.point_within(point, &self.offset) {
-            if !self.vert(Vertical::Bottom) {
-                distinct_vec_add(&mut self.state.0, Vertical::Bottom);
-            } else {
-                self.state.0.retain(|h| *h != Vertical::Bottom);
-            };
-        }
+    fn interact(&mut self, ctx: &mut Context, point: &Point) -> GameResult<()> {
+        let ns = self.state.clone();
+        let bo = self.buttons.iter().find(|b| b.interact(point, &mut ns));
+        self.state = ns;
         Ok(())
     }
 
     fn hover(&mut self, point: &Point) -> Option<Rect> {
-        let rect = self.to_vec()
+        let rect = self.buttons
             .iter()
-            .find(|b| b.point_within(point, &self.offset))
+            .find(|b| b.hover(point))
             .map(|b| b.rect.clone());
-        let offseted = rect.map(|r| offset_rect(&r, &self.offset));
-        self.hovered = offseted;
-        offseted
+        self.hovered = rect;
+        rect
     }
 
     fn return_state(&self) -> Option<SpriteType> {
         Some(SpriteType::Ground {
-            horizontal: self.state.1.clone(),
-            vertical: self.state.0.clone(),
+            square: self.state.clone(),
         })
     }
 }
 
+type SBPI = SimpleButton<Vec<Horizontal>>;
 pub struct PlatformUi {
     offset: Point,
     hovered: Option<Rect>,
     state: Vec<Horizontal>,
-    left: SimpleButton,
-    center: SimpleButton,
-    right: SimpleButton,
+    left: SBPI,
+    center: SBPI,
+    right: SBPI,
 }
 
 impl PlatformUi {
     pub fn new(
         ctx: &mut Context,
-        assets: &Assets,
+        assets: Rc<Assets>,
         offset: Point,
         state: Vec<Horizontal>,
     ) -> GameResult<PlatformUi> {
-        let left_t = Text::new(ctx, "Left", &assets.font)?;
-        let right_t = Text::new(ctx, "Right", &assets.font)?;
-        let middle_t = Text::new(ctx, "Middle", &assets.font)?;
+        let clj = |state: &mut Vec<Horizontal>, s: Horizontal| {
+            if !state.contains(&s) {
+                distinct_vec_add(&mut state, s);
+            } else {
+                state.retain(|i| *i != s);
+            };
+        };
 
-        let left_r = Rect::new(-H_SPACE, -W_SPACE, W_SIZE, H_SIZE);
-        let h_center_r = Rect::new(0.0, -W_SPACE, W_SIZE, H_SIZE);
-        let right_r = Rect::new(H_SPACE, -W_SPACE, W_SIZE, H_SIZE);
-
-        let left = SimpleButton::new(left_t, left_r);
-        let center = SimpleButton::new(middle_t.clone(), h_center_r);
-        let right = SimpleButton::new(right_t, right_r);
+        let left = SimpleButton::new33(
+            ctx,
+            assets,
+            "Left",
+            4,
+            &offset,
+            Box::new(|state: &mut Vec<Horizontal>| clj(state, Horizontal::Left)),
+        );
+        let center = SimpleButton::new33(
+            ctx,
+            assets,
+            "Center",
+            5,
+            &offset,
+            Box::new(|state: &mut Vec<Horizontal>| clj(state, Horizontal::Center)),
+        );
+        let right = SimpleButton::new33(
+            ctx,
+            assets,
+            "Right",
+            6,
+            &offset,
+            Box::new(|state: &mut Vec<Horizontal>| clj(state, Horizontal::Right)),
+        );
 
         Ok(PlatformUi {
             offset,
@@ -466,29 +462,22 @@ impl PlatformUi {
         })
     }
 
-    pub fn to_vec(&self) -> Vec<&SimpleButton> {
+    pub fn to_vec(&self) -> Vec<&SBPI> {
         vec![&self.left, &self.center, &self.right]
-    }
-
-    fn hor(&self, h: Horizontal) -> bool {
-        self.state.contains(&h)
     }
 
     fn draw_selected(&self, ctx: &mut Context) {
         let color = Color::new(0.0, 0.8, 0.2, 1.0);
         let offset = &self.offset;
 
-        if self.hor(Horizontal::Left) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.left.rect, offset))
-                .unwrap();
+        if self.state.contains(&Horizontal::Left) {
+            draw_rect_with_outline(ctx, color.clone(), &self.left.rect).unwrap();
         };
-        if self.hor(Horizontal::Center) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.center.rect, offset))
-                .unwrap();
+        if self.state.contains(&Horizontal::Right) {
+            draw_rect_with_outline(ctx, color.clone(), &self.right.rect).unwrap();
         };
-        if self.hor(Horizontal::Right) {
-            draw_rect_with_outline(ctx, color.clone(), &offset_rect(&self.right.rect, offset))
-                .unwrap();
+        if self.state.contains(&Horizontal::Center) {
+            draw_rect_with_outline(ctx, color.clone(), &self.center.rect).unwrap();
         };
     }
 }
@@ -496,7 +485,7 @@ impl PlatformUi {
 impl UiState for PlatformUi {
     fn draw(&self, ctx: &mut Context) {
         for b in self.to_vec().iter() {
-            b.draw(ctx, &self.offset);
+            b.draw(ctx);
         }
 
         self.draw_selected(ctx);
@@ -506,48 +495,26 @@ impl UiState for PlatformUi {
         };
     }
 
-    fn interact(&mut self, _: &mut Context, point: &Point) -> GameResult<()> {
-        if self.left.point_within(point, &self.offset) {
-            if !self.hor(Horizontal::Left) {
-                distinct_vec_add(&mut self.state, Horizontal::Left);
-            } else {
-                self.state.retain(|h| *h != Horizontal::Left);
-            };
-        } else if self.center.point_within(point, &self.offset) {
-            if !self.hor(Horizontal::Center) {
-                distinct_vec_add(&mut self.state, Horizontal::Center);
-            } else {
-                self.state.retain(|h| *h != Horizontal::Center);
-            };
-        } else if self.right.point_within(point, &self.offset) {
-            if !self.hor(Horizontal::Right) {
-                distinct_vec_add(&mut self.state, Horizontal::Right);
-            } else {
-                self.state.retain(|h| *h != Horizontal::Right);
-            };
-        }
+    fn interact(&mut self, ctx: &mut Context, point: &Point) -> GameResult<()> {
+        self.to_vec()
+            .iter()
+            .find(|b| b.interact(point, &mut self.state));
         Ok(())
     }
 
     fn hover(&mut self, point: &Point) -> Option<Rect> {
         let rect = self.to_vec()
             .iter()
-            .find(|b| b.point_within(point, &self.offset))
+            .find(|b| b.hover(point))
             .map(|b| b.rect.clone());
-        let offseted = match rect {
-            Some(mut r) => {
-                r.x += self.offset.x;
-                r.y += self.offset.y;
-                Some(r)
-            }
-            None => None,
-        };
-        self.hovered = offseted;
-        offseted
+        self.hovered = rect;
+        rect
     }
 
     fn return_state(&self) -> Option<SpriteType> {
-        Some(SpriteType::Platform { horizontal: self.state.clone() })
+        Some(SpriteType::Platform {
+            horizontal: self.state.clone(),
+        })
     }
 }
 
@@ -593,11 +560,6 @@ fn distinct_vec_add<T: Hash + Eq + PartialEq>(vec: &mut Vec<T>, value: T) {
     vec.extend(set.into_iter());
 }
 
-pub fn offset_rect(rect: &Rect, point: &Point) -> Rect {
-    Rect {
-        x: rect.x + point.x,
-        y: rect.y + point.y,
-        w: rect.w,
-        h: rect.h,
-    }
+fn center(r: &Rect) -> Point {
+    Point::new((r.left() + r.right()) / 2.0, (r.top() + r.bottom()) / 2.0)
 }

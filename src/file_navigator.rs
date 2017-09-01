@@ -13,7 +13,7 @@ pub mod navigator {
 
             let app: Ui<usize> = Ui::new().expect("Failed to initialize the Ui");
 
-            let ext_filter = format!("Needed(*.png;*.json)|All(*.*)", exts);
+            let ext_filter = format!("Needed(*.png;*.json)|All(*.*)");
 
             FileNavigator::setup_ui(&app, ext_filter).unwrap();
 

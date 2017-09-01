@@ -1,6 +1,6 @@
 use ggez;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Rect {
     pub x: f32,
     pub y: f32,
@@ -14,13 +14,13 @@ impl Rect {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Point {
     pub x: f32,
     pub y: f32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Size {
     pub w: f32,
     pub h: f32,
