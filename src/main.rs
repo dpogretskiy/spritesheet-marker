@@ -1,7 +1,7 @@
 extern crate ggez;
 extern crate image;
-extern crate serde_json;
 extern crate serde;
+extern crate serde_json;
 
 #[cfg(windows)]
 extern crate native_windows_gui as nwg;
@@ -83,12 +83,14 @@ fn lets_play(meta: &PathBuf, image: &PathBuf) {
 
 pub struct Assets {
     font: Font,
+    awesome: Font,
 }
 
 impl Assets {
     pub fn load(ctx: &mut Context) -> GameResult<Assets> {
         let font = Font::new(ctx, "/DejaVuSerif.ttf", 18)?;
-        Ok(Assets { font })
+        let awesome = Font::new(ctx, "/awesome.ttf", 18)?;
+        Ok(Assets { font, awesome })
     }
 }
 
@@ -114,10 +116,9 @@ impl Game {
         let image = sprite.image.clone();
 
         let marked_path = marked_path(&meta_path);
-        let marked: Vec<SpriteData> = if let Some(data) =
-            File::open(marked_path.clone()).ok().and_then(|f| {
-                serde_json::from_reader(f).ok()
-            })
+        let marked: Vec<SpriteData> = if let Some(data) = File::open(marked_path.clone())
+            .ok()
+            .and_then(|f| serde_json::from_reader(f).ok())
         {
             data
         } else {
@@ -141,9 +142,9 @@ impl Game {
     pub fn hover(&mut self, x: i32, y: i32) {
         let point = Point::new(x as f32, y as f32);
 
-        let dp = self.sprites_render.iter().find(|tuple| {
-            ui::point_within(&point, &tuple.2)
-        });
+        let dp = self.sprites_render
+            .iter()
+            .find(|tuple| ui::point_within(&point, &tuple.2));
 
         match dp {
             Some(&(_, ix, rect)) => {
