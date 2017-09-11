@@ -13,10 +13,13 @@ serde_json = "*"
 serde_derive = "*"
 serde = "*"
 image = "*"
-ggez = { version = "0.3", features = ["cargo-resource-root"] }
+
+[dependencies.ggez]
+git = "https://github.com/ggez/ggez"
+features = ["cargo-resource-root"]
 
 [[bin]]
-bin = "main.rs"
+path = "src/main.rs"
 name = "marker"
 
 [target.'cfg(windows)'.dependencies]
